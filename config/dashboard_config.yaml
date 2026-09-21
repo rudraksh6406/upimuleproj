@@ -1,0 +1,20 @@
+server:
+  host: "127.0.0.1"
+  port: 8000
+  reload: false
+  
+stream:
+  batch_interval_ms: 200
+  txns_per_batch: 5
+  max_graph_nodes: 100
+  max_graph_edges: 250
+  retention_window_seconds: 3600
+  
+visualization:
+  theme: "dark"
+  node_colors:
+    normal: "#10b981"    # emerald green
+    flagged: "#f59e0b"   # amber
+    restricted: "#f97316"# orange
+    frozen: "#ef4444"    # crimson red
+    merchant: "#3b82f6"  # blue

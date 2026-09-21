@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MuleGuard — Real-Time UPI Mule Account Detection (TGNN)</title>
+    <!-- Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- D3.js -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation & Header -->
+        <header class="top-header">
+            <div class="logo-section">
+                <div class="shield-icon">🛡️</div>
+                <div class="brand-text">
+                    <h1>MULEGUARD <span class="badge-tag">TGNN v2.0</span></h1>
+                    <p class="subtitle">Real-Time Continuous-Time Temporal Graph Neural Network for UPI Mule Detection</p>
+                </div>
+            </div>
+            <div class="header-status">
+                <div class="status-indicator live-pulse"></div>
+                <span id="system-status-text">SYSTEM ACTIVE • STREAM SCORING</span>
+            </div>
+        </header>
+
+        <!-- KPI Metrics Ribbon -->
+        <section class="metrics-ribbon">
+            <div class="metric-card">
+                <div class="metric-title">TOTAL TRANSACTIONS</div>
+                <div class="metric-value" id="metric-total-txns">0</div>
+                <div class="metric-sub">Continuous stream</div>
+            </div>
+            <div class="metric-card alert-card">
+                <div class="metric-title">FLAGGED MULE ACCOUNTS</div>
+                <div class="metric-value" id="metric-flagged-mules">0</div>
+                <div class="metric-sub">Score > 0.30</div>
+            </div>
+            <div class="metric-card critical-card">
+                <div class="metric-title">GUARDIAN AUTO-FROZEN</div>
+                <div class="metric-value" id="metric-frozen-mules">0</div>
+                <div class="metric-sub">Risk Policy > 0.90</div>
+            </div>
+            <div class="metric-card latency-card">
+                <div class="metric-title">TGNN INFERENCE LATENCY</div>
+                <div class="metric-value"><span id="metric-latency">11.4</span> <span class="unit">ms</span></div>
+                <div class="metric-sub">Target: &lt; 50ms (Passed)</div>
+            </div>
+        </section>
+
+        <!-- Main Workspace: 3 Columns -->
+        <main class="dashboard-grid">
+            <!-- Left Panel: Live Risk Alerts Feed -->
+            <aside class="panel alerts-panel">
+                <div class="panel-header">
+                    <h2>🚨 Live Risk Feed & Alerts</h2>
+                    <span class="count-badge" id="alert-badge">0 Live</span>
+                </div>
+                <div class="alerts-container" id="alerts-list">
+                    <!-- Populated dynamically via WebSocket / polling -->
+                </div>
+            </aside>
+
+            <!-- Center Panel: D3.js Real-Time Temporal Graph -->
+            <section class="panel graph-panel">
+                <div class="panel-header">
+                    <h2>🌐 Dynamic Temporal Graph Stream</h2>
+                    <div class="graph-legend">
+                        <span class="legend-item"><span class="dot normal"></span> Normal</span>
+                        <span class="legend-item"><span class="dot merchant"></span> Merchant</span>
+                        <span class="legend-item"><span class="dot flagged"></span> Flagged</span>
+                        <span class="legend-item"><span class="dot frozen"></span> Frozen</span>
+                    </div>
+                </div>
+                <div class="graph-viewport" id="graph-container">
+                    <svg id="network-svg" width="100%" height="100%"></svg>
+                </div>
+                <div class="graph-footer">
+                    <span>💡 <i>Click any node to inspect temporal attention weights and trigger manual actions.</i></span>
+                    <button class="btn-sm" id="btn-reset-zoom">Reset View</button>
+                </div>
+            </section>
+
+            <!-- Right Panel: Account Inspector & Explainability -->
+            <aside class="panel inspector-panel">
+                <div class="panel-header">
+                    <h2>🔍 Account Inspector</h2>
+                </div>
+                <div class="inspector-content" id="inspector-body">
+                    <div class="empty-state" id="inspector-empty">
+                        <p>Select any account in the graph or alert feed to view TGNN dynamic memory, attention weights, and natural language explanation.</p>
+                    </div>
+                    <div class="account-details-view" id="inspector-details" style="display: none;">
+                        <div class="vpa-banner">
+                            <span class="vpa-text" id="insp-vpa">user@okaxis</span>
+                            <span class="status-pill" id="insp-status">NORMAL</span>
+                        </div>
+                        
+                        <div class="score-meter-container">
+                            <div class="meter-label">
+                                <span>TGNN Mule Risk Score:</span>
+                                <span class="score-pct" id="insp-score-pct">12%</span>
+                            </div>
+                            <div class="meter-bar-bg">
+                                <div class="meter-bar-fill" id="insp-score-bar" style="width: 12%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="section-title">Natural Language Explanation</div>
+                        <div class="explanation-box" id="insp-explanation">
+                            Normal account within legitimate behavioral parameters.
+                        </div>
+
+                        <div class="section-title">Top Attention Graph Neighbors</div>
+                        <div class="attention-neighbors-list" id="insp-neighbors">
+                            <!-- Populated dynamically -->
+                        </div>
+
+                        <div class="section-title">Operator Actions</div>
+                        <div class="action-buttons">
+                            <button class="btn btn-freeze" id="btn-action-freeze">Freeze Account</button>
+                            <button class="btn btn-restrict" id="btn-action-restrict">Restrict Transfers</button>
+                            <button class="btn btn-allow" id="btn-action-allow">Clear / Allow</button>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/metrics.js"></script>
+    <script src="/static/alerts.js"></script>
+    <script src="/static/inspector.js"></script>
+    <script src="/static/graph.js"></script>
+</body>
+</html>

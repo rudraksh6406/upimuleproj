@@ -1,0 +1,35 @@
+model:
+  type: tgn
+  memory_dim: 64
+  embedding_dim: 128
+  message_dim: 64
+  attention_heads: 4
+  dropout: 0.2
+  classifier_layers: [128, 64, 32, 1]
+  neighborhood_size: 20  # K for attention
+  
+training:
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  batch_size: 200
+  epochs: 50
+  patience: 5
+  gradient_clip: 1.0
+  lr_scheduler:
+    type: ReduceLROnPlateau
+    factor: 0.5
+    patience: 3
+    
+data:
+  train_path: data/raw/train/
+  val_path: data/raw/val/
+  test_path: data/raw/test/
+  sliding_window_hours: 24
+  
+ablation:
+  no_memory: false        # If true, disable GRU (TGN → TGAT)
+  no_temporal_encoding: false  # If true, remove Δt from messages
+  no_edge_features: false      # If true, remove amount/type from messages
+  no_attention: false          # If true, replace attention with mean aggregation
+  reduced_memory_dim: null     # If set, override memory_dim
+  reduced_neighborhood: null   # If set, override K

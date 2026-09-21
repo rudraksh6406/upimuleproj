@@ -1,0 +1,43 @@
+generation:
+  num_accounts_train: 10000
+  num_accounts_val: 5000
+  num_accounts_test: 5000
+  mule_ratio: 0.05
+  time_span_days_train: 30
+  time_span_days_val: 7
+  time_span_days_test: 7
+  
+legitimate:
+  account_age_range: [1, 730]
+  active_ratio: 0.6
+  daily_lambda_active: 5
+  daily_lambda_casual: 0.5
+  amount_lognormal_mu: 4.2
+  amount_lognormal_sigma: 1.5
+  p2p_ratio: 0.4
+  p2m_ratio: 0.6
+  device_count_1: 0.70
+  device_count_2: 0.25
+  device_count_3plus: 0.05
+  counterpart_range: [3, 15]
+  
+mule_patterns:
+  - fan_out
+  - layering_chain
+  - fan_in
+  - cyclic_flow
+  - burst_dormant
+  - coordinated_ring
+  - device_sharing
+  - amount_clustering
+  - gaming_betting
+
+banks:
+  - {name: okhdfcbank, weight: 0.25}
+  - {name: okaxis, weight: 0.15}
+  - {name: okstatebank, weight: 0.20}
+  - {name: okicici, weight: 0.15}
+  - {name: okpunjab, weight: 0.05}
+  - {name: ybl, weight: 0.05}
+  - {name: okdbs, weight: 0.03}
+  - {name: others, weight: 0.12}

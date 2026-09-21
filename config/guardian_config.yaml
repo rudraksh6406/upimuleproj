@@ -1,0 +1,42 @@
+thresholds:
+  normal_account:
+    flag: 0.3
+    restrict: 0.7
+    freeze: 0.9
+  new_account:  # age < 7 days
+    flag: 0.2
+    restrict: 0.5
+    freeze: 0.8
+  merchant_account:
+    flag: 0.3
+    restrict: 0.7
+    freeze: 0.92
+    
+actions:
+  freeze:
+    block_incoming: true
+    block_outgoing: true
+    send_alert: true
+    alert_level: critical
+  restrict:
+    block_incoming: false
+    block_outgoing: true
+    send_alert: true
+    alert_level: warning
+  flag:
+    block_incoming: false
+    block_outgoing: false
+    send_alert: false
+    add_to_review_queue: true
+    alert_level: info
+    
+alerts:
+  dashboard: true
+  sqlite_log: true
+  email:
+    enabled: false
+    smtp_server: ""
+    recipients: []
+  slack:
+    enabled: false
+    webhook_url: ""
