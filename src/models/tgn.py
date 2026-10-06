@@ -27,6 +27,7 @@ class TGNModel(nn.Module):
         device: str = "cpu",
         use_memory: bool = True,
         use_attention: bool = True,
+        positive_class_weight: float = 5.0,
     ):
         super().__init__()
         self.num_nodes = num_nodes
@@ -77,7 +78,9 @@ class TGNModel(nn.Module):
             dropout=dropout,
         )
 
-        self.bce_loss = nn.BCELoss()
+        # Event labels are imbalanced; optimize logits with an explicit positive
+        # weight instead of allowing the trivial all-legitimate solution.
+        self.register_buffer("positive_class_weight", torch.tensor(float(positive_class_weight)))
 
     def reset_state(self) -> None:
         """Resets memory state and neighbor interactions."""
@@ -147,17 +150,21 @@ class TGNModel(nn.Module):
         z_src, attn_src = self.compute_temporal_embeddings(src, timestamps)
         z_dst, attn_dst = self.compute_temporal_embeddings(dst, timestamps)
 
-        # 2. Predict mule probabilities
-        p_src = self.classifier(z_src)
-        p_dst = self.classifier(z_dst)
-
-        # Joint prediction for the interaction (max of src and dst)
-        p_event = torch.maximum(p_src, p_dst)
+        # 2. Predict mule probabilities. max(logit_src, logit_dst) expresses the
+        # event label semantics (positive when either endpoint is a mule).
+        logits_src = self.classifier.get_logits(z_src)
+        logits_dst = self.classifier.get_logits(z_dst)
+        event_logits = torch.maximum(logits_src, logits_dst)
+        p_src = torch.sigmoid(logits_src)
+        p_dst = torch.sigmoid(logits_dst)
+        p_event = torch.sigmoid(event_logits)
 
         loss = None
         if labels is not None:
             labels = labels.to(self.device)
-            loss = self.bce_loss(p_event, labels)
+            loss = F.binary_cross_entropy_with_logits(
+                event_logits, labels, pos_weight=self.positive_class_weight
+            )
 
         # 3. Compute interaction messages and update memory if memory enabled
         if self.use_memory:

@@ -16,7 +16,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from src.data.dataset import TemporalBatchLoader, build_temporal_graph_data
 from src.data.preprocessor import GraphPreprocessor
-from src.evaluation.metrics import compute_classification_metrics
+from src.evaluation.metrics import compute_classification_metrics, find_best_threshold
 from src.models.tgn import TGNModel
 from src.utils.config import load_config
 from src.utils.logging import get_logger
@@ -84,7 +84,9 @@ def train():
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
     scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=2)
 
-    best_val_f1 = 0.0
+    best_val_pr_auc = -1.0
+    epochs_without_improvement = 0
+    patience = int(cfg.get("training", {}).get("patience", 5))
     checkpoint_dir = root_dir / "results" / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     best_model_path = checkpoint_dir / "best_tgn.pt"
@@ -144,8 +146,9 @@ def train():
                 val_preds.extend(out["p_event"].cpu().numpy())
                 val_targets.extend(batch["labels"].numpy())
 
-        val_metrics = compute_classification_metrics(np.array(val_targets), np.array(val_preds))
-        scheduler.step(val_metrics["f1_score"])
+        val_targets_arr, val_preds_arr = np.array(val_targets), np.array(val_preds)
+        decision_threshold, val_metrics = find_best_threshold(val_targets_arr, val_preds_arr)
+        scheduler.step(val_metrics["pr_auc"])
 
         logger.info(
             f"Epoch {epoch:02d}/{args.epochs:02d} | "
@@ -156,19 +159,27 @@ def train():
             f"Val PR-AUC: {val_metrics['pr_auc']:.4f}"
         )
 
-        # Save Best Checkpoint
-        if val_metrics["f1_score"] >= best_val_f1:
-            best_val_f1 = val_metrics["f1_score"]
+        # Select on validation PR-AUC (appropriate for imbalanced labels), and
+        # persist the validation-only decision threshold for later test use.
+        if val_metrics["pr_auc"] > best_val_pr_auc:
+            best_val_pr_auc = val_metrics["pr_auc"]
+            epochs_without_improvement = 0
             torch.save({
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
                 "node_to_idx": prep.node_to_idx,
-                "val_f1": best_val_f1,
-                "val_auc": val_metrics["roc_auc"],
+                "model_config": m_cfg,
+                "decision_threshold": decision_threshold,
+                "val_metrics": val_metrics,
             }, best_model_path)
             logger.info(f"==> Saved new best model checkpoint to {best_model_path}")
+        else:
+            epochs_without_improvement += 1
+            if epochs_without_improvement >= patience:
+                logger.info(f"Early stopping after {patience} epochs without PR-AUC improvement.")
+                break
 
-    logger.info(f"Training completed! Best Validation F1: {best_val_f1:.4f}")
+    logger.info(f"Training completed! Best Validation PR-AUC: {best_val_pr_auc:.4f}")
 
 
 if __name__ == "__main__":

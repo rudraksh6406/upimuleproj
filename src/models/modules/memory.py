@@ -18,8 +18,11 @@ class NodeMemory(nn.Module):
         self.gru_cell = nn.GRUCell(input_size=message_dim, hidden_size=memory_dim)
         
         # State buffers (not model parameters, but persistent state)
-        self.register_buffer("memory", torch.zeros(num_nodes, memory_dim, device=device))
-        self.register_buffer("last_update_ts", torch.zeros(num_nodes, device=device))
+        # Runtime temporal state is deliberately excluded from checkpoints: it
+        # depends on stream population/order and prevents inductive loading with
+        # a different node count.
+        self.register_buffer("memory", torch.zeros(num_nodes, memory_dim, device=device), persistent=False)
+        self.register_buffer("last_update_ts", torch.zeros(num_nodes, device=device), persistent=False)
         
         # Raw message store buffer for nodes involved in events
         self.messages: Dict[int, list] = {}

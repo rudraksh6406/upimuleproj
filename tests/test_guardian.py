@@ -46,7 +46,11 @@ def test_realtime_pipeline():
     }
 
     gb.add_transaction(txn)
+    # Repeated transfers must remain distinct: velocity evidence cannot be
+    # collapsed into a single DiGraph edge.
+    gb.add_transaction({**txn, "txn_id": "txn_test_002", "timestamp": 1726910401.0})
     assert gb.G.has_edge("alice@okaxis", "bob@okhdfcbank")
+    assert gb.G.number_of_edges("alice@okaxis", "bob@okhdfcbank") == 2
 
     res = inf_engine.process_transaction(txn)
     assert res["sender_score"] >= 0.0

@@ -13,7 +13,9 @@ class RealTimeGraphBuilder:
         self.max_recent_nodes = max_recent_nodes
         
         # In-memory dynamic graph
-        self.G = nx.DiGraph()
+        # A MultiDiGraph preserves repeated transfers between the same accounts;
+        # collapsing them into one edge destroys velocity/layering evidence.
+        self.G = nx.MultiDiGraph()
         self.recent_txns: Deque[Dict[str, Any]] = deque()
         self.node_metadata: Dict[str, Dict[str, Any]] = {}
         self.active_vpas: Deque[str] = deque(maxlen=max_recent_nodes)
@@ -37,17 +39,22 @@ class RealTimeGraphBuilder:
         if not self.G.has_node(v):
             self.G.add_node(v, vpa=v, is_merchant=txn.get("txn_type") == "P2M", risk_score=0.0, action="ALLOW")
 
-        self.G.add_edge(u, v, amount=amt, timestamp=ts, txn_id=txn.get("txn_id"))
+        edge_key = str(txn.get("txn_id") or f"{ts}:{len(self.recent_txns)}")
+        txn["_graph_edge_key"] = edge_key
+        self.G.add_edge(u, v, key=edge_key, amount=amt, timestamp=ts, txn_id=txn.get("txn_id"))
 
         # Sliding window pruning
         cutoff = ts - self.retention_seconds
         while self.recent_txns and self.recent_txns[0]["timestamp"] < cutoff:
             expired = self.recent_txns.popleft()
             exp_u, exp_v = expired["sender_vpa"], expired["receiver_vpa"]
-            if self.G.has_edge(exp_u, exp_v):
-                # Only remove if this was the last edge
-                if self.G[exp_u][exp_v].get("timestamp", 0) <= expired["timestamp"]:
-                    self.G.remove_edge(exp_u, exp_v)
+            edge_key = expired.get("_graph_edge_key")
+            if edge_key is not None and self.G.has_edge(exp_u, exp_v, key=edge_key):
+                self.G.remove_edge(exp_u, exp_v, key=edge_key)
+
+        # Remove inactive isolates while preserving risk state for active nodes.
+        isolates = [n for n in nx.isolates(self.G) if n not in self.active_vpas]
+        self.G.remove_nodes_from(isolates)
 
     def update_node_risk(self, vpa: str, score: float, action: str, explanation: str = "") -> None:
         """Updates real-time score and action state on node."""
