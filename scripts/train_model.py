@@ -16,7 +16,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from src.data.dataset import TemporalBatchLoader, build_temporal_graph_data
 from src.data.preprocessor import GraphPreprocessor
-from src.evaluation.metrics import compute_classification_metrics
+from src.evaluation.metrics import compute_classification_metrics, find_best_threshold
 from src.models.tgn import TGNModel
 from src.utils.config import load_config
 from src.utils.logging import get_logger
@@ -40,6 +40,10 @@ def train():
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu or cuda or mps)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--patience", type=int, default=None,
+                        help="Early-stopping patience (defaults to model config)")
+    parser.add_argument("--positive-class-weight", type=float, default=0.0,
+                        help="BCE positive weight; 0 derives a capped neg/pos ratio")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -67,6 +71,19 @@ def train():
 
     logger.info(f"Graph initialized with {prep.next_node_id} unique accounts.")
 
+    # Derive the imbalance weight from training labels unless explicitly set.
+    positives = int(train_data.labels.sum())
+    negatives = int(train_data.num_events - positives)
+    positive_class_weight = (
+        args.positive_class_weight
+        if args.positive_class_weight > 0
+        else min(5.0, negatives / max(1, positives))
+    )
+    logger.info(
+        "Training label distribution: %d positive / %d negative; positive weight %.3f",
+        positives, negatives, positive_class_weight,
+    )
+
     # Initialize TGN Model
     model = TGNModel(
         num_nodes=prep.next_node_id + 500,  # headroom for new streaming nodes
@@ -78,13 +95,19 @@ def train():
         attention_heads=m_cfg.get("attention_heads", 4),
         dropout=m_cfg.get("dropout", 0.2),
         neighborhood_size=m_cfg.get("neighborhood_size", 20),
+        positive_class_weight=positive_class_weight,
         device=device,
     ).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
     scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=2)
 
-    best_val_f1 = 0.0
+    best_val_pr_auc = -1.0
+    epochs_without_improvement = 0
+    patience = (
+        args.patience if args.patience is not None
+        else int(cfg.get("training", {}).get("patience", 5))
+    )
     checkpoint_dir = root_dir / "results" / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     best_model_path = checkpoint_dir / "best_tgn.pt"
@@ -144,8 +167,9 @@ def train():
                 val_preds.extend(out["p_event"].cpu().numpy())
                 val_targets.extend(batch["labels"].numpy())
 
-        val_metrics = compute_classification_metrics(np.array(val_targets), np.array(val_preds))
-        scheduler.step(val_metrics["f1_score"])
+        val_targets_arr, val_preds_arr = np.array(val_targets), np.array(val_preds)
+        decision_threshold, val_metrics = find_best_threshold(val_targets_arr, val_preds_arr)
+        scheduler.step(val_metrics["pr_auc"])
 
         logger.info(
             f"Epoch {epoch:02d}/{args.epochs:02d} | "
@@ -156,19 +180,28 @@ def train():
             f"Val PR-AUC: {val_metrics['pr_auc']:.4f}"
         )
 
-        # Save Best Checkpoint
-        if val_metrics["f1_score"] >= best_val_f1:
-            best_val_f1 = val_metrics["f1_score"]
+        # Select on validation PR-AUC (appropriate for imbalanced labels), and
+        # persist the validation-only decision threshold for later test use.
+        if val_metrics["pr_auc"] > best_val_pr_auc:
+            best_val_pr_auc = val_metrics["pr_auc"]
+            epochs_without_improvement = 0
             torch.save({
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
                 "node_to_idx": prep.node_to_idx,
-                "val_f1": best_val_f1,
-                "val_auc": val_metrics["roc_auc"],
+                "model_config": m_cfg,
+                "decision_threshold": decision_threshold,
+                "positive_class_weight": positive_class_weight,
+                "val_metrics": val_metrics,
             }, best_model_path)
             logger.info(f"==> Saved new best model checkpoint to {best_model_path}")
+        else:
+            epochs_without_improvement += 1
+            if epochs_without_improvement >= patience:
+                logger.info(f"Early stopping after {patience} epochs without PR-AUC improvement.")
+                break
 
-    logger.info(f"Training completed! Best Validation F1: {best_val_f1:.4f}")
+    logger.info(f"Training completed! Best Validation PR-AUC: {best_val_pr_auc:.4f}")
 
 
 if __name__ == "__main__":

@@ -7,7 +7,8 @@ from src.data.vpa_generator import generate_vpa, generate_device_id, sample_bank
 def test_vpa_generation():
     vpa_user = generate_vpa(is_merchant=False)
     assert "@" in vpa_user
-    assert "." in vpa_user or "_" in vpa_user or any(c.isdigit() for c in vpa_user)
+    local_part, bank_handle = vpa_user.split("@", maxsplit=1)
+    assert local_part and bank_handle  # plain alphabetic UPI handles are valid too
 
     vpa_merchant = generate_vpa(is_merchant=True)
     assert "@" in vpa_merchant
